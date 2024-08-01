@@ -1,0 +1,192 @@
+import os
+import imagehash
+from PIL import Image
+import cv2
+from collections import defaultdict
+import threading
+import time
+import shutil
+import hashlib
+
+running = True
+
+def get_file_hash(file_path):
+    try:
+        if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
+            return imagehash.average_hash(Image.open(file_path))
+        elif file_path.lower().endswith(('.mp4', '.avi', '.mov', '.wmv')):
+            video = cv2.VideoCapture(file_path)
+            ret, frame = video.read()
+            if ret:
+                return imagehash.average_hash(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
+            else:
+                print(f"Warning: Unable to read video file: {file_path}")
+    except Exception as e:
+        print(f"Error processing file {file_path}: {str(e)}")
+    return None
+
+def get_file_checksum(file_path):
+    hash_md5 = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+def find_duplicates(folder_path):
+    global running
+    hash_dict = defaultdict(list)
+    
+    total_files = sum([len(files) for r, d, files in os.walk(folder_path)])
+    print(f"Total files to analyze: {total_files}")
+    
+    analyzed_files = 0
+    start_time = time.time()
+    for root, dirs, files in os.walk(folder_path):
+        if not running:
+            return None, None
+        for file in files:
+            if not running:
+                return None, None
+            file_path = os.path.join(root, file)
+            file_hash = get_file_hash(file_path)
+            if file_hash:
+                hash_dict[file_hash].append(file_path)
+            
+            analyzed_files += 1
+            if analyzed_files % 10 == 0:
+                current_time = time.time()
+                elapsed_time = current_time - start_time
+                percentage = (analyzed_files / total_files) * 100
+                
+                if analyzed_files > 10:
+                    estimated_total_time = elapsed_time / (analyzed_files / total_files)
+                    estimated_remaining_time = estimated_total_time - elapsed_time
+                    time_remaining_str = f", Estimated time remaining: {estimated_remaining_time:.2f} seconds"
+                else:
+                    time_remaining_str = ""
+                
+                print(f"Analyzed {analyzed_files} out of {total_files} files ({percentage:.2f}%){time_remaining_str}")
+    
+    duplicates = {k: v for k, v in hash_dict.items() if len(v) > 1}
+    return duplicates, hash_dict
+
+def timeout_function():
+    global running
+    time.sleep(6000)  # Max runtime
+    running = False
+    print("Script execution timed out after 100 minutes")
+
+def safe_move(src, dst):
+    # Check if source file exists
+    if not os.path.exists(src):
+        print(f"Warning: Source file does not exist: {src}")
+        return False
+
+    # Get the checksum of the source file
+    src_checksum = get_file_checksum(src)
+
+    # Copy the file
+    shutil.copy2(src, dst)
+
+    # Verify the checksum of the copied file
+    dst_checksum = get_file_checksum(dst)
+
+    if src_checksum == dst_checksum:
+        # If checksums match, delete the original file
+        os.remove(src)
+        return True
+    else:
+        # If checksums don't match, delete the copy and report an error
+        os.remove(dst)
+        print(f"Error: File integrity check failed for {src}")
+        return False
+
+def organize_files(folder_path, duplicate_groups, hash_dict):
+    non_duplicate_folder = os.path.join(folder_path, "NonDuplicateImages")
+    duplicate_sets_folder = os.path.join(folder_path, "DuplicateImageSets")
+    
+    # Create master folders if they don't exist
+    os.makedirs(non_duplicate_folder, exist_ok=True)
+    os.makedirs(duplicate_sets_folder, exist_ok=True)
+    
+    # Move non-duplicate images
+    for hash_value, file_list in hash_dict.items():
+        if len(file_list) == 1:
+            file_path = file_list[0]
+            file_name = os.path.basename(file_path)
+            base_name, extension = os.path.splitext(file_name)
+            
+            # Check if a file with the same name already exists
+            counter = 1
+            new_file_name = file_name
+            while os.path.exists(os.path.join(non_duplicate_folder, new_file_name)):
+                new_file_name = f"{base_name}_{counter}{extension}"
+                counter += 1
+            
+            if not safe_move(file_path, os.path.join(non_duplicate_folder, new_file_name)):
+                print(f"Failed to move file: {file_path}")
+    
+    # Move duplicate images
+    for i, (hash_value, file_list) in enumerate(duplicate_groups.items(), 1):
+        duplicate_set_folder = os.path.join(duplicate_sets_folder, f"Set_{i}")
+        os.makedirs(duplicate_set_folder, exist_ok=True)
+        
+        for j, file_path in enumerate(file_list, 1):
+            file_name, file_ext = os.path.splitext(os.path.basename(file_path))
+            new_file_name = f"{file_name}_{j}{file_ext}"
+            if not safe_move(file_path, os.path.join(duplicate_set_folder, new_file_name)):
+                print(f"Failed to move file: {file_path}")
+
+def remove_empty_folders(path):
+    """
+    Remove empty folders recursively
+    """
+    for root, dirs, files in os.walk(path, topdown=False):
+        for dir in dirs:
+            dir_path = os.path.join(root, dir)
+            if not os.listdir(dir_path):  # Check if the directory is empty
+                try:
+                    os.rmdir(dir_path)
+                    print(f"Removed empty folder: {dir_path}")
+                except OSError as e:
+                    print(f"Error removing empty folder {dir_path}: {e}")                
+
+folder_path = r"C:\Users\......"  # Replace with your folder path
+
+timeout_thread = threading.Thread(target=timeout_function)
+timeout_thread.start()
+
+try:
+    start_time = time.time()
+    duplicate_groups, hash_dict = find_duplicates(folder_path)
+    
+    if duplicate_groups is not None and hash_dict is not None:
+        total_files = sum([len(files) for r, d, files in os.walk(folder_path)])
+        total_duplicates = sum(len(file_list) for file_list in duplicate_groups.values()) - len(duplicate_groups)
+        duplicate_percentage = (total_duplicates / total_files) * 100
+
+        print(f"\nSummary:")
+        print(f"Total files analyzed: {total_files}")
+        print(f"Total duplicate copies found: {total_duplicates}")
+        print(f"Percentage of files that are duplicates: {duplicate_percentage:.2f}%\n")
+
+        print("Organizing files...")
+        organize_files(folder_path, duplicate_groups, hash_dict)
+        print("File organization completed.")
+        
+        print("\nRemoving empty folders...")
+        remove_empty_folders(folder_path)
+        print("Empty folder removal completed.")
+        
+        end_time = time.time()
+        print(f"Script completed in {end_time - start_time:.2f} seconds")
+    else:
+        print("Script execution was interrupted")
+except Exception as e:
+    print(f"An error occurred: {str(e)}")
+finally:
+    running = False
+    timeout_thread.join()
+
+print("\nIMPORTANT: Please verify that all files have been correctly organized before deleting any original files.")
+print("It's recommended to keep a backup of the original folder until you've confirmed the results.")
