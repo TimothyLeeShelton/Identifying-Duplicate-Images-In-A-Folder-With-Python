@@ -2,6 +2,11 @@
 
 This Python script identifies duplicate images and videos within a specified folder and all it's subfolders.
 
+## Warnings: 
+- Please note: This was a hobby project, please don't trust it with anything you can't afford to delete.
+- It will traverse all sub-folders of the primary file, and will re-organize every image/video into either a "Duplicates" folder or a "Non-Duplicates" folder.
+- Items you choose to delete will be in your computer's Recycle bin.
+
 ## Features
 
 - Analyzes a range of filetypes (.png, .jpg, .jpeg, .gif, .bmp, .mp4, .avi, .mov, .wmv)
