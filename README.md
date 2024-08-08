@@ -98,6 +98,7 @@ If you're new to Python and haven't used the command prompt before, follow these
 ## Customization
 - You can adjust the timeout duration by modifying the `time.sleep(6000)` value in the `timeout_function()`.
 - To include additional file types, add them to the file extension checks in the `get_file_hash()` function.
+- It currently uses a hashing algorithm that identifies exact duplicates. If you want it to match more loosely on similar photos, you can comment out the existing hash function, and un-comment the one that is currently commented out.
 
 ## Limitations
 - The script currently only analyzes the first frame of video files for comparison.
