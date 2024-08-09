@@ -92,7 +92,7 @@ If you're new to Python and haven't used the command prompt before, follow these
 - The script has a built-in timeout of 100 minutes (6000 seconds) to prevent excessively long runs.
 - Always keep a backup of your original folder before running this script.
 - Verify that all files have been correctly organized before deleting any original files.
-- The script uses image hashing, which may occasionally identify visually similar (but not identical) images as duplicates.
+- The script defaults to only surfacing exact identical images as duplicates. If you want to find similar images, see the note in customization section.
 - Files deleted through the GUI are moved to the Recycle Bin, not permanently deleted.
 
 ## Customization
