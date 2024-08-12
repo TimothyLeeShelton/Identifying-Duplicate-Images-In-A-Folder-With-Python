@@ -6,6 +6,7 @@ This Python script identifies and organizes duplicate images and videos within a
 - Please note: This was a hobby project, please don't trust it with anything you can't afford to delete.
 - It will traverse all sub-folders of the primary file, and will re-organize every image/video into either a "Duplicates" folder or a "Non-Duplicates" folder.
 - Items you choose to delete through the GUI will be moved to your computer's Recycle Bin.
+- Built for windows devices. Not Apple/Linux/Mobile.
 
 ## Setup for Beginners
 
