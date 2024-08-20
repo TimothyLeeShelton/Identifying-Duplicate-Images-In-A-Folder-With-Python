@@ -5,6 +5,8 @@ import time
 import shutil
 import hashlib
 from collections import defaultdict
+import concurrent.futures
+import threading
 
 # Third-party library imports
 import tkinter as tk
