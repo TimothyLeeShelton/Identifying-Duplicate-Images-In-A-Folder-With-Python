@@ -51,50 +51,71 @@ def get_file_hash(file_path):
 #         print(f"Error processing file {file_path}: {str(e)}")
 #     return None
 
+def process_file_chunk(file_chunk):
+    local_hash_dict = defaultdict(list)
+    for file_path in file_chunk:
+        if not running:
+            return None
+        file_hash = get_file_hash(file_path)
+        if file_hash:
+            local_hash_dict[file_hash].append(file_path)
+    return local_hash_dict
+
+def find_duplicates(folder_path):
+    global running
+    hash_dict = defaultdict(list)
+    
+    all_files = []
+    for root, dirs, files in os.walk(folder_path):
+        all_files.extend([os.path.join(root, file) for file in files])
+    
+    total_files = len(all_files)
+    print(f"Total files to analyze: {total_files}")
+    
+    # Determine the number of threads to use (you can adjust this)
+    num_threads = os.cpu_count() or 1
+    chunk_size = max(1, total_files // num_threads)
+    
+    analyzed_files = 0
+    start_time = time.time()
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+        future_to_chunk = {executor.submit(process_file_chunk, all_files[i:i+chunk_size]): i 
+                           for i in range(0, len(all_files), chunk_size)}
+        
+        for future in concurrent.futures.as_completed(future_to_chunk):
+            if not running:
+                return None, None
+            chunk_result = future.result()
+            if chunk_result:
+                for file_hash, file_list in chunk_result.items():
+                    hash_dict[file_hash].extend(file_list)
+            
+            analyzed_files += chunk_size
+            current_time = time.time()
+            elapsed_time = current_time - start_time
+            percentage = (analyzed_files / total_files) * 100
+            
+            if analyzed_files > 10:
+                estimated_total_time = elapsed_time / (analyzed_files / total_files)
+                estimated_remaining_time = estimated_total_time - elapsed_time
+                time_remaining_str = f", Estimated time remaining: {estimated_remaining_time:.2f} seconds"
+            else:
+                time_remaining_str = ""
+            
+            print(f"Analyzed approximately {analyzed_files} out of {total_files} files ({percentage:.2f}%){time_remaining_str}")
+    
+    duplicates = {k: v for k, v in hash_dict.items() if len(v) > 1}
+    return duplicates, hash_dict
+
+
+
 def get_file_checksum(file_path):
     hash_md5 = hashlib.md5()
     with open(file_path, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
-
-def find_duplicates(folder_path):
-    global running
-    hash_dict = defaultdict(list)
-    
-    total_files = sum([len(files) for r, d, files in os.walk(folder_path)])
-    print(f"Total files to analyze: {total_files}")
-    
-    analyzed_files = 0
-    start_time = time.time()
-    for root, dirs, files in os.walk(folder_path):
-        if not running:
-            return None, None
-        for file in files:
-            if not running:
-                return None, None
-            file_path = os.path.join(root, file)
-            file_hash = get_file_hash(file_path)
-            if file_hash:
-                hash_dict[file_hash].append(file_path)
-            
-            analyzed_files += 1
-            if analyzed_files % 10 == 0:
-                current_time = time.time()
-                elapsed_time = current_time - start_time
-                percentage = (analyzed_files / total_files) * 100
-                
-                if analyzed_files > 10:
-                    estimated_total_time = elapsed_time / (analyzed_files / total_files)
-                    estimated_remaining_time = estimated_total_time - elapsed_time
-                    time_remaining_str = f", Estimated time remaining: {estimated_remaining_time:.2f} seconds"
-                else:
-                    time_remaining_str = ""
-                
-                print(f"Analyzed {analyzed_files} out of {total_files} files ({percentage:.2f}%){time_remaining_str}")
-    
-    duplicates = {k: v for k, v in hash_dict.items() if len(v) > 1}
-    return duplicates, hash_dict
 
 def timeout_function():
     global running
